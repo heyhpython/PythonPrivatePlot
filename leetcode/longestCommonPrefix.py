@@ -14,22 +14,23 @@ def longestCommonPrefix(strs):
 
     while i <= l:
         print(ret)
+        s = start[i:i + short // 2] if short > 1 else start[i:i+1]
         try:
-            if all([chars.startswith(start[i:i + short // 2]) for chars in strs]):
-                ret += start[i:i + short // 2]
+            if all([chars.startswith(ret+s) for chars in strs]):
+                ret += s
                 i = i + short // 2
-                short //= 2
-                continue
 
+            else:
+                short //= 2
         except IndexError:
             # zai qian 1/2
             pass
 
-        short //= 2
-        if short<=1:
+            short //= 2
+        if short <= 1:
             return ret
 
     return ret
 
 
-print(longestCommonPrefix(["rdog", "racecar", "rar"]))
+print(longestCommonPrefix(["a", "a"]))

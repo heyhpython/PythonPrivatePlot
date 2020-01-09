@@ -1,0 +1,18 @@
+# File name: resizeable_placement.py
+# :kivy 1.11.1
+
+<Button>
+    font_size:24
+
+<Widgets>:
+    Button:
+        size: 100,75
+        pos: root.x, root.top - self.height
+        text: 'confirm'
+        color: 0,1,0,1
+
+    Button:
+        size: root.right//2,root.height//2
+        pos: root.right - self.width,0
+        text: 'confirm2'
+        color: 1,1,1,1
