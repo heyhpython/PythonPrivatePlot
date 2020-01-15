@@ -2,3 +2,6 @@
 # builtins
 # third party package
 # self built
+"""
+share a package study note every week
+"""
