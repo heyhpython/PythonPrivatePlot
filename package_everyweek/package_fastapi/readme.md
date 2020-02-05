@@ -168,6 +168,120 @@ def get_user2(response: Response):
     response.set_cookie(key="cookie", value="this is a cookie")
     return content
 ``` 
+- 自定义的响应头需要以`X-`开头
+
+### 安全性Security
+- fastapi的security模块提供快速搭建用户验证及鉴权的方案
+```python
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/token")
+
+@app.post("/token")
+def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    return {"access_token": hash(form_data.username), "token_type": "bearer"}
+    
+@app.get("/items/")
+async def read_items(token: str = Depends(oauth2_scheme)):
+    return {"token": token}
+```
+- tokenUrl指明了生成token的url，但是并没有实现验证账户密码及生成token的逻辑，需要使用者自己实现
+- 调用api时不符合OAuth2 Bearer规范的token将会直接返回401未授权
+- login接口的返回值必须包含access_token和token_type两个字段
+
+### 中间件(类似flask请求钩子)
+```python
+@app.middleware("http")
+def after_request(req: Request, call_nxt):
+    start_time = time.time()
+    response = await call_nxt(req)
+    process_time = time.time() - start_time
+    response.headers["X-Process-Time"] = str(process_time)
+    return response
+```
+- 可以添加错误处理的中间件或者响应加密、压缩等
+
+### 跨域资源共享(CORS)
+```python
+from starlette.middleware.cors import CORSMiddleware
+
+origins = [
+    "http://localhost.tiangolo.com",
+    "https://localhost.tiangolo.com",
+    "http://localhost",
+    "http://localhost:8080",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,  # can be ["*"]
+    allow_credentials=True,
+    allow_methods=["*"],  # allow all method
+    allow_headers=["*"],  # allow all header
+)
+```
+### APIRouter(flask blueprint)
+- file user
+
+```python
+from fastapi import APIRouter
+
+router = APIRouter()
+
+
+@router.get("/", tags=["users"])
+async def read_users():
+    return [{"username": "Foo"}, {"username": "Bar"}]
+    
+app.include_router(
+    router,
+    prefix="/users",
+    tags=["items"],
+    #dependencies=[Depends(get_token_header)],
+    )
+```
+- 使用include_router注册路由
+- 使用preifix参数给路由添加路径前缀
+- 使用dependencies参数给该路由下的所有处理函数注入依赖
+
+### background task
+```python
+from fastapi import BackgroundTasks
+
+def execute_background():
+    # some thing need tobe execute after return response
+    pass
+
+@app.post("/send-notification/{email}")
+async def send_notification(background_tasks: BackgroundTasks):
+    background_tasks.add_task(execute_background)
+    return {"message": "operations will execute backgroud"}
+```
+- execute_background会在返回响应之后在后台执行
+- 后台任务用法适用于计算量小的，需要共享内存的场景
+- 当需要执行大量且计算量大，或者在新的进程中执行时，可以使用celery[模板](https://fastapi.tiangolo.com/project-generation/) 
+
+### 静态文件
+```bash pip install aiofiles
+```
+```python
+from starlette.staticfiles import StaticFiles
+app.mount("/static", StaticFiles(directory="static"), name="static")
+```
+
+### 测试
+```python
+from starlette.testclient import TestClient
+client = TestClient(app)
+
+
+def test_read_main():
+    response = client.get("/")
+    assert response.status_code == 200
+    assert response.json() == {"msg": "Hello World"}
+```
+- 可以使用pytest运行测试用例
+- test client 基于requests，使用方法类似
 
 ### 自动生成接口文档
 - FastAPI支持自动生成Swagger UI & ReDoc两种风格的接口文档
