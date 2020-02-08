@@ -290,3 +290,4 @@ def test_read_main():
 
 ### 思考
 - 如何实现类似flask_restful.Api类似的路由
+- [更多高级特性](https://fastapi.tiangolo.com/advanced/)
