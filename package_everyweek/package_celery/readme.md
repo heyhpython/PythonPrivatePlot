@@ -95,4 +95,5 @@ celery -A proj worker -Q videos --hostname=y@%h   # 运行videos队列的职程
 celery -A proj worker -Q images --hostname=y@%h   # 运行images队列的职程
 ```
 - [AMQP相关概念](https://www.cnblogs.com/qtiger/p/10071463.html)
-- [AMQP架构](https://img2018.cnblogs.com/blog/983950/201812/983950-20181205162817321-1993697263.png)
+- ![AMQP架构](https://img2018.cnblogs.com/blog/983950/201812/983950-20181205162817321-1993697263.png)
+- 合理的配置不同的交换机和队列，可以使指定机器只执行指定类型的任务比如IO密集或计算密集等
