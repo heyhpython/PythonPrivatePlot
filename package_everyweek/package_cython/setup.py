@@ -6,4 +6,4 @@ from Cython.Build import cythonize
 # self built
 import os
 cwd = os.path.dirname(__file__)
-setup(ext_modules=cythonize('fib.pyx'))
+setup(ext_modules=cythonize('memo.pyx'))

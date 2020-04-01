@@ -1,6 +1,7 @@
 ## 1.compile cython code
 
 ### 1.1 Cython Compilation Pipeline
+
 - cython cython代码的编译工作通过编译管道完成
 - 编译管道分为两步
 - 第一步由cython编译器将cython代码编译成平台自由c或c++  cython编译器实现
@@ -429,6 +430,7 @@ cdef class E:
 - in-place操作的例外是`__ipow__`，他的用法与`__add__`一致
 
 #### 4.7.2比较运算符
+
 - cython不支持python中的`__eq__, __lt__, __le`等，
 - 而是提供了`__richcmp__(x, y, op)`方法作为替代
 - op参数接收一个整形数字，表明需要进行的比较方式,对照如下
@@ -441,4 +443,346 @@ Py_NE   !=
 Py_GT   > 
 Py_GE   >=
 ```
-- 这些整型数字是python编译时常亮，定义在python运行时object.h
+- 这些整型数字是python编译时常亮，定义在python运行时object.
+
+
+#### 4.7.3 迭代器
+```
+cdef class I:
+    cdef:
+        list data
+        int i
+    def __init__(self):
+        self.data = list(range(100))
+        self.i = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.i >= len(self.data):
+            raise StopIteration
+        ret = self.data[self.i]
+        self.i += 1
+        return ret
+```
+- 实现了`__iter__`和`__next__`方法，则实例可以是一个迭代器
+
+## 5.组织cython代码
+```
+.pyx # cython implemention code
+.pxd # cython 定义文件
+.pxi # cython 包含文件
+```
+
+### 5.1 pyx与pxd
+- 当需要共享c层级的结构体时，我们需要创建一个定义文件
+- 定义文件只在编译时用到，因此只能在文件里添加c层级的声明，python层级的`def`禁止放在定义文件中
+- 定义文件的文件名与实现文件相同，因此被cython视作同一个命名空间，因此在pxd与pyx中的声明变量不能重名
+- 任何对其他c层级的cython模块可以访问的，都需要在定义文件中
+- 包括:
+```
+# c 类型定义 ctypedef struct union enum
+# 为外部c或者c++库的定义
+# cdef 或者cpdef模块级别的函数
+# cdef的扩展类型
+# cdef的扩展类型属性
+# cdef和cpdef的方法
+# c层级的行内函数或方法
+```
+- 不可包括：
+```
+python函数或非行内函数或方法
+python类
+在if或def代码块外可执行的python代码
+```
+- 外部的实现文件可以通过`cimport`访问simulator中所有的c层级的构造体
+
+### 5.2 cimprot 语句
+```
+from simulator cimport State, step, real_t
+from simulator import setup as sim_setup
+```
+- `cimport`导入的发生在编译时。并在pxd文件中查找只能cimportable的定义
+- `import`语句工作在python层级，并在运行时导入
+- `cimport`与`import`语法一致
+- `cimport`python层级的对象会导致编译错误， `import`c层级的对象会导致编译错误
+- `cimport` 与 `import` 都可以导入扩展类型和`cpdef`定义的函数，更让推荐`cimport`
+- `import` 扩展类型或者`cpdef`函数只有python层级的权限，并且`cpdef`函数是通过python的包装调用
+```
+cdef extern "mt19937ar.h":
+    void init_genrand(unsigned long s)
+    unsigned long genrand_int32()
+```
+- `pxd`文件可以包含`cdef extern`代码块,任何其他`pyx`文件都可以导入并直接  使用该定义文件中的函数
+- 在cython的安装路径有c,c++,python,numpy的预定义文件，提供直接接入相关api
+
+### 5.3 cython的`include`语句和include文件`pxi`
+
+```
+IF UNAME_SYSNAME == "Linux":
+    include "linux.pxi"
+ELIF UNAME_SYSNAME == "Darwin":
+    include "darwin.pxi"
+IF UNAME_SYSNAME == "Windows":
+    include "windows.pxi"
+```
+- 同一个文件使用两次`include`会导致编译错误
+- 每个不同的`pxi`文件是统一接口的不同平台实现
+- 推荐使用`cimport`，在必须要源代码层级的导入时，才使用`include`
+
+
+## 6.用cyhton包装c库
+
+### 6.1 用cython声明外部c代码
+```
+cdef extern from "header_name":
+    从头文件中的缩进声明
+```
+- cython解释器会在生成的源文件中加入一行`#include "header_name" `
+- 类型、函数和其他的在代码块的都可以从cython访问
+- cython会在编译时检测c的声明被使用类型正确的方式使用，否则会抛出编译错误
+- cython不会自动的包装已定义的对象，我们需要写`def`,`cdef`,`cpdef`来调用外部块中定义的c函数等
+
+### 6.2 声明外部的c函数和类型定义
+- `extern`块里最常见的是从c头文件搬运过来的函数和类型定义，但必须要修改一些地方
+- 将`typedef`改为`ctypedef`
+- 删除不需要和不知此的关键字，比如`restrict`,`volatile`
+- 确保函数返回类型和名字在同一行声明
+- 删除行结束符分号
+```
+# 1.直接照搬
+cdef extern from "header.h":
+    void(*signal(void(*)(int)))(int)
+# 1.可读性更高的办法
+cdef extern from "header.h":
+    ctypedef void(*void_int_fptr)(int)
+    void_int_fptr signal(void_int_fptr)
+```
+- 两种方式效果一致，第二种定义的`void_int_fptr`并不在c的头文件中
+- 使用`extern`时，最好给函数参数一个名字，尤其是当参数名有意义时，有助于理解函数的作用
+
+### 6.3声明和包装c结构体、集合、枚举值
+```
+cdef extern from "header_name":
+    struct struct_name:
+        struct_members
+    
+    union struct_name:
+        struct_members
+
+    enums struct_name:
+        struct_members
+```
+- 语法与在cython中定义对应类型一致
+- 如果是类型定义的类型，则使用`ctyprdef`关键字
+```
+cdef extern from "header_name":
+    ctypedef struct struct_alias:
+        struct_members
+```
+- 如果不需要使用结构体内的某一字段，但是又必须要将其作为不透明类型使用，可以在字段块使用pass
+- `const`关键字对于定义函数参数可以省略
+```
+cdef extern from "printer.h":
+    void _print "print"(fmt_str, arg)
+```
+- 可以给函数、结构体或类型定义一个别名，比如上例中在cython中使用`_print`来调用c的`print`函数
+- 别名可以避免与python内置的函数或者关键字冲突
+
+## 7.用cyhton包装c++库
+- cython只能封装c++的公共方法和成员
+```
+cdef extern from "mt19937.h" namespace "mtrandom":
+    unsigned int N
+    cdef cppcclass MT_RNG:
+        MT_RNG(undigned long s)
+        MT_RNG(undigned long init_key[], int key_length)
+        void init_genrand(unsigned long s)
+        unsigned long genrand_int32()
+        double genrand_real1()
+```
+- 使用cython`namespace`语句声明c++的namespace
+- 使用`cppclass` 关键字声明c++的class
+- 若没有命名空间，可以省去`namespace`语句
+- 若有层级的命名空间。可以使用`ns_outer::ns_inner`
+- 在`cppclass`代码块下声明c++ class的接口
+
+### 7.1 包装扩展类型供python使用
+```
+cdef class RNG:
+    cdef MT_RNG *_thisptr
+    cdef __cinit__(self, unsigned long s):
+        self._thisptr = new MT_RNG(s)
+    cdef __dealloc(self):
+        if self._thisptr != NULL:
+            del self._thisptr 
+    
+    cpdef unsigned long randint(self):
+        return self._thisptr.genranbd_int32()
+    
+    cpdef double rand(self):
+        return self._thisptr.genranbd_real1()
+    
+```
+- 使用`cpdef`函数封装c++方法
+
+### 7.2 和c++代码一起编译
+- 当编译c++项目时， 需要指定包含所有的c++源文件并且指定语言参数或指令
+```python
+from distutils.core import setup, Extension
+from Cython.Build import cythonize
+
+ext = Extension("RNG",sources=["RNG.pyx", "mt19937.cpp"], language="c++")   
+setup(name="RNG", ext_modules=cythonize(ext))            
+```
+- 或者在`RNG.pyx`文件头指定 `distutils: language = c++` 和`distutils: sources=mt19937.cpp`
+- 也可以使用`pyximport`编译扩展模块。但需要创建一个`RNG.pyxbld`文件，告诉pyximprot正在编译c++扩展，并且指明需要包含的c++源文件
+
+
+### 7.3 重载函数和方法
+
+#### 7.3.1通过参数分发
+```
+cdef class RNG:
+    cdef MT_RNG *_thisptr
+    cdef __cinit__(self, unsigned long s):
+        if isinstance(s, int)：
+            self._thisptr = new MT_RNG(s)   
+        else：
+            from cython.array cimport array
+            arr = array("L", s)
+            self._thisptr = new MT_RNG(arr.as_ulongs, len(arr)) 
+```
+- `重载` 根据不同的参数，执行同一个函数名的不同的函数体
+- python不支持函数方法重载，因为我们需要根据不同的参数来调用不同的函数
+
+#### 7.3.2通过`overloading`操作器
+
+### 7.4c++的错误机制
+- cython自动检测并转化c++的异常成python的异常，但是无法在`try catch`代码里捕获，也不可以在cython里抛出c++异常
+- 为了捕获c++异常，在函数或方法的声明后加`except +`
+- 为捕捉特定的错误，可以在`except +`后加特定的错误类型或者`cdef`函数的handler
+
+```
+cdef int handler():
+    ...
+
+cdef extern from "mt19937.h" namespace "mtrandom":
+    unsigned int N
+    cdef cppcclass MT_RNG:
+        MT_RNG(undigned long s) except +
+        MT_RNG(undigned long init_key[], int key_length) except +handler
+```
+### 7.5 c++类的继承
+- cython的`cppclass`没有继承机制，因此在导入c++的子类和父类时，需要完全声明你需要的属性和方法
+- 同一方法在基类和子类中的不同实现，再导入基类子类时，如果都申明了该方法，cython会对不同的类，生成正确的代码
+- 或者显示的将子类型指针转换成基类，也可以访问基类实现的方法
+
+### 7.6 模板函数和cython的混合类型
+### 7.6 模板函数和cython的混合类型
+```c++
+template <class T>
+const T& min(const T& a, const T& b);
+
+template <class T>
+const T& min(const T& a, const T& b);
+```
+
+```
+cdef extern from "<algorithm>" namespace "std":
+    const T max[T](T a, T b) except +
+    const T min[T](T a, T b) except +
+```
+- 为了表明是模板函数，在函数名之后函数参数列表之前， 加上了方括号加上模板参数名`[T]`
+
+### 7.7 模板类
+```
+cdef extern from "<vector>" namespace "std":
+    cdef cppclass vector[t]:
+        ...
+```
+
+## 8 cython 优化工具
+
+### 8.1 运行时cprofile与cython的profile指令
+```
+import cProfile
+cProfile.run("main()", sort="time")
+```
+- python内置的profile和cprofile可以调试python代码，但是不可以跨语言调试c代码。所有c代码的执行细节会丢失
+- cython里定义的函数对于python的性能调试工具来说是一个黑箱，但是可以设置全局编译指令`# cython: profile=True`来支持运行时的性能分析
+- cython支持对某一函数有选择性的调试
+```
+@cython.profile(True)
+def sin2(x):
+    ...
+```
+- 使用c标准包里的函数，比使用python的c接口要快
+
+### 8.2 编译时性能分析和提示
+- cython代码调用越少的python C API，那么性能就越好，因为调用c api需要在c对象和python 对象中转化，并且需要管理引用计数和错误处理等
+- cython的编译器提供可选的表示`--annotate`或`-a` 告知cython生成代表cython源代码的网页文件`cython xx.pyx -a`
+- 网页文件用不同的颜色区分调用python/c api的次数，调用次数越多越黑黄，越少越明黄，点击每一行可以看见生成的c代码
+
+## 9.Numpy 和 `memoryview`
+
+### 9.1 新的缓冲协议
+- 是一个c层级的协议，python的对象可以实现协议
+- 协议支持所有的python3版本
+- 协议定义了一个c层级的结构体，有数据缓冲及数据层级、类型、读写权限的元数据
+- 数据缓冲可以让使用者从不同的方式访问同一份数据，任何修改都是在原始数据上做修改，省略了数据的拷贝
+- 支持的数据类型又`numpy ndarray`,python2的内置字符串类型，但是python2的unicode和python3的字符串类型不支持
+- 内置的`bytearray`, 标准库的`array.array`和`ctypes.arrays`以及其他第三方类型，比如pil的多种图片类型
+
+### 9.2 python的`memoryview`
+- 是c层级缓冲的python代表，传入一个实现了协议的python对象可以创建一个`memoryview`对象
+```python
+bb = b'qeqweqwweq'
+memv = memoryview(bb)
+memv[0]
+```
+- 可以像访问列表一样去访问`memoryview`
+- 但是是否可以修改数据则取决于原始数据的写权限
+- 使用`memoryview`修改后，原始数据也会被修改
+
+### 9.3 cython的`memoryview`
+- cython的`memoryview`与python类时，但是更快
+```
+def summer(double[:] mv):
+    cdef double d, ss = 0.0
+    for d in mv:
+        ss += d
+    return ss
+```
+- `double[:] mv`定义mv一维为`typed momoryview`类型, 多维:`double[:,:,:]`
+- 可以向访问列表一样访问mv的元素
+- 在每次访问mv时，cython都会检查索引是否越界以及负数索引，会导致循环变慢
+```
+from cython cimport boundscheck, wraparound
+
+with boundscheck(False), wraparound(False):
+     ...
+# 或者
+@boundscheck(False)
+@wraparound(False)
+def xxxx:
+    ...
+# 或者
+# cython: boundscheck=False
+# cython: wraparound=False
+```
+- 当确定不会索引越界也不会使用负数时，可以使用如上方法关掉检查
+```
+cdef int a[3][5][7]
+cdef int[:,:,::1] mv = a
+```
+- 可以直接将固定大小c的数组赋值给memoryview类型，因为固定大小的c数组总是内存连续的
+```
+from libc.stdlib cimport malloc 
+
+def dynamic(size_t N, size_t M): 
+    cdef long *arr = <long*>malloc(N * M * sizeof(long))
+    cdef long[:,::1] mv = <long[:N, :M]>arr  # 会抛出错误
+```
+- 动态生成的数组也可以作为内存试图使用，但需要手动处理索引计算,不建议这样做
