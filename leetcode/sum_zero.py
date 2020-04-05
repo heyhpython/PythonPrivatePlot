@@ -15,7 +15,7 @@ class Solution:
                     else:
                         cur = - cur - seed
                 res.append(cur)
-            rest = 0 -sum(res)
+            rest = 0 - sum(res)
             if rest in res:
                 # print(res, rest)
                 res.clear()
