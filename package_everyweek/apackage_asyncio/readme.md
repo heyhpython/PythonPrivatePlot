@@ -266,4 +266,23 @@ asyncio.run(main())
 
 ## 5.使用`asyncio`开发
 
-### 5.1 `Debug`
+### 5.1 `Debug模式
+- `PYTHONASYNCIODEBUG=1`环境变量开启`DEBUG`模式
+- `-X dev`python命令行选项开启
+- `asyncio.run(..., debug=True)`开启
+- `loop.set_debug()` 开启
+
+#### 开启`DEBUG`模式时
+- `asyncio`检查未被等待的协程并记录
+- 非线程安全的API如果从错误的线程调用会引发异常
+- 如果I/O操作花费时间过长，则记录I/O选择器的执行时间
+- 执行超过100ms的回调会被载入日志，设置`loop.slow_callback_duration`可用于设置以秒为单位的最小执行时间
+
+### 5.2并发和多线程
+- 事件循环在线程中运行（通常是主线程），并在其线程中执行所有的回调和任务
+- 当任务在事件循环中运行时，没有其他任务可以在同一线程中运行
+- 当一个任务执行`await`表达式时，正在运行任务被挂起，事件循环执行下一个任务
+- 使用`loop.call_soon_threadsafe()`调度来自不同线程的回调函数
+- 几乎所有的异步对象都不是线程安全的，若要在任务或回调函数的范围之外调用，可以使用`loop.call_soon_threadsafe()`
+- 要从不同的线程调度一个协程对象，可以使用`asyncio.run_cotoutine_threadsafe()`，他返回一个`Future`对象
+- 对于计算密集型的代码，不应该直接调用，而是用执行器在不同的线程甚至进程中去执行`loop.run_in_executor()`配合` concurrent.futures.ThreadPoolExecutor`
