@@ -9,6 +9,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
 # self built
+
+
 logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
                     datefmt='%a, %d %b %Y %H:%M:%S')
@@ -34,13 +36,16 @@ def load_data(s):
     """
     # 读取数据集成numpy数组
     # 1000张800乘800的图
-    files = glob.glob(f"./{s}*.jpg")
-    images = np.zeros((len(files), 292, 430))
+    files = glob.glob(f"./{s}*.*")
+    print(files)
+    images = np.zeros((len(files), 1000, 1000))
     classes = np.zeros((len(files)))
     i = 0
     for img_file_name in files:
         # 图片属于哪种类型在名称开头表示如train_line_1.jpg 表示训练集灯管的第一条数据是长条
-        img = Image.open(img_file_name).convert('L')
+        img = Image.open(img_file_name)
+        img = img.crop((0, 0, 1000, 1000))
+        img = img.convert('L')
         img = np.array(img)
         images[i] = img
         t, class_, _ = img_file_name.split('_')
@@ -66,7 +71,7 @@ def main():
     # 第二和第三层是全连接神经网络层，第二层有128个节点 第三层返回一个长度为3的数组
     # 数组的每一个表示当前图形属于三类中某一类的logits(一个事件发生与该事件不发生的比值的对数)
     model = keras.Sequential([
-        keras.layers.Flatten(input_shape=(292, 430)),  # 图片的尺寸
+        keras.layers.Flatten(input_shape=(1000, 1000)),  # 图片的尺寸
         keras.layers.Dense(128, activation='relu'),
         keras.layers.Dense(3)
     ])
@@ -77,6 +82,7 @@ def main():
     model.compile(
         optimizer='adam',
         loss=keras.losses.SparseCategoricalCrossentropy(from_logits=True)
+        # loss=keras.losses.
     )
 
     # 训练模型
@@ -84,12 +90,13 @@ def main():
     model.fit(train_images, train_classes, epochs=6)
 
     # 精度测算
-    test_loss, test_acc = model.evaluate(test_images,  test_classes, verbose=1)
+    logger.debug(model.evaluate(test_images,  test_classes, verbose=2))
 
     # 预测
     probability_model = tf.keras.Sequential([model, tf.keras.layers.Softmax()])
-
+    # logger.debug(test_images)
     predictions = probability_model.predict(test_images)
+    logger.debug(f"{predictions}")
 
 
 def show_img(img_file_name):
