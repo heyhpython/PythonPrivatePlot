@@ -1,0 +1,6 @@
+{
+    "python.pythonPath": "/Users/hawl/.pyenv/versions/package-fastapi/bin/python",
+    "python.linting.flake8Enabled": true,
+    "python.autoComplete.addBrackets": true,
+    "files.autoSave": "onFocusChange"
+}
