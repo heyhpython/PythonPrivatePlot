@@ -28,7 +28,7 @@ class Solution:
 
         while queue:
             if queue[0][1] == K:
-                return [node.val for node,d in queue]
+                return [node.val for node, d in queue]
             node, d = queue.pop(0)
             for nei in (node.left, node.right, node.par):
                 if nei and nei.val not in checked:
